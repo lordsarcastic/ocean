@@ -1,3 +1,4 @@
+from enum import StrEnum
 import typing
 from typing import Any, AsyncGenerator
 
@@ -28,12 +29,13 @@ WEBHOOK_EVENTS = [
     "sprint_deleted",
     "sprint_started",
     "sprint_closed",
-    "board_created",
-    "board_updated",
-    "board_deleted",
-    "board_configuration_changed",
 ]
 
+class ResourceKey(StrEnum):
+    BOARDS = "boards"
+    PROJECTS = "projects"
+    ISSUES = "issues"
+    SPRINTS = "sprints"
 
 class JiraClient:
     def __init__(self, jira_url: str, jira_email: str, jira_token: str) -> None:
@@ -62,7 +64,11 @@ class JiraClient:
         }
 
     async def _make_paginated_request(
-        self, url: str, params: dict[str, Any] = {}
+        self, url: str,
+        params: dict[str, Any] = {},
+        is_last_function: typing.Callable[
+            [dict[str, Any]], bool
+        ] = lambda response: response["isLast"]
     ) -> AsyncGenerator[list[dict[str, Any]], None]:
         params = {**params, **self._generate_base_req_params()}
         is_last = False
@@ -70,9 +76,8 @@ class JiraClient:
             response = await self.client.get(url, params=params)
             response.raise_for_status()
             response_data = response.json()
-            values = response_data["values"]
-            yield values
-            is_last = response_data["isLast"]
+            yield response_data
+            is_last = is_last_function(response_data)
             start = response_data["startAt"] + response_data["maxResults"]
             params = {**params, "startAt": start}
         return
@@ -87,14 +92,26 @@ class JiraClient:
     async def get_projects(
         self, board_id: int
     ) -> AsyncGenerator[list[dict[str, Any]], None]:
-        async for projects in self._make_paginated_request(
+        if cache := event.attributes.get(ResourceKey.PROJECTS):
+            logger.info("Picking projects from cache")
+            yield cache
+            return
+
+        async for project_response in self._make_paginated_request(
             f"{self.base_url}/board/{board_id}/project"
         ):
+            projects = project_response["values"]
+            event.attributes.setdefault(ResourceKey.PROJECTS, []).extend(projects)
             yield projects
 
     async def get_issues(
         self, board_id: int
     ) -> AsyncGenerator[list[dict[str, Any]], None]:
+        if cache := event.attributes.get(ResourceKey.ISSUES):
+            logger.info("Picking issues from cache")
+            yield cache
+            return
+
         params = {}
         config = typing.cast(JiraResourceConfig, event.resource_config)
 
@@ -102,21 +119,39 @@ class JiraClient:
             params["jql"] = config.selector.jql
             logger.info(f"Found JQL filter: {config.selector.jql}")
 
-        async for issues in self._make_paginated_request(
-            f"{self.base_url}/board/{board_id}/issue", params=params
+        async for issue_response in self._make_paginated_request(
+            f"{self.base_url}/board/{board_id}/issue",
+            params=params,
+            is_last_function=lambda response: response["startAt"]
         ):
+            issues = issue_response["issues"]
+            event.attributes.setdefault(ResourceKey.ISSUES, []).extend(issues)
             yield issues
 
     async def get_sprints(
         self, board_id: int
     ) -> AsyncGenerator[list[dict[str, Any]], None]:
-        async for sprints in self._make_paginated_request(
+        if cache := event.attributes.get(ResourceKey.SPRINTS):
+            logger.info("Picking sprints from cache")
+            yield cache
+            return
+
+        async for sprints_response in self._make_paginated_request(
             f"{self.base_url}/board/{board_id}/sprint"
         ):
+            sprints = sprints_response["values"]
+            event.attributes.setdefault(ResourceKey.SPRINTS, []).extend(sprints)
             yield sprints
 
     async def get_boards(self) -> AsyncGenerator[list[dict[str, Any]], None]:
-        async for boards in self._make_paginated_request(f"{self.base_url}/board/"):
+        if cache := event.attributes.get(ResourceKey.BOARDS):
+            logger.info("Picking boards from cache")
+            yield cache
+            return
+
+        async for boards_response in self._make_paginated_request(f"{self.base_url}/board/"):
+            boards = boards_response["values"]
+            event.attributes.setdefault(ResourceKey.BOARDS, []).extend(boards)
             yield boards
 
     async def get_single_project(self, project_key: str) -> dict[str, Any]:
@@ -137,11 +172,6 @@ class JiraClient:
         sprint_response = await self.client.get(f"{self.base_url}/sprint/{sprint_id}")
         sprint_response.raise_for_status()
         return sprint_response.json()
-
-    async def get_single_board(self, board_id: int) -> dict[str, Any]:
-        board_response = await self.client.get(f"{self.base_url}/board/{board_id}")
-        board_response.raise_for_status()
-        return board_response.json()
 
     async def create_events_webhook(self, app_host: str) -> None:
         webhook_target_app_host = f"{app_host}/integration/webhook"

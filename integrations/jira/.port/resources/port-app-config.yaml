@@ -1,28 +1,13 @@
 createMissingRelatedEntities: true
 deleteDependentEntities: true
 resources:
-  - kind: board
-    selector:
-      query: "true"
-    port:
-      entity:
-        mappings:
-          identifier: .id
-          title: .name
-          blueprint: '"jiraBoard"'
-          properties:
-            url: .self
-            type: .type
-          relations:
-            project: .location.projectId
-
   - kind: sprint
     selector:
       query: "true"
     port:
       entity:
         mappings:
-          identifier: .id
+          identifier: .id | tostring
           title: .name
           blueprint: '"jiraSprint"'
           properties:
@@ -30,8 +15,6 @@ resources:
             state: .state
             startDate: .startDate
             endDate: .endDate
-          relations:
-            board: .originBoardId
 
   - kind: project
     selector:
@@ -44,8 +27,6 @@ resources:
           blueprint: '"jiraProject"'
           properties:
             url: (.self | split("/") | .[:3] | join("/")) + "/projects/" + .key
-          relations:
-            board: .boardId
 
   - kind: issue
     selector:
@@ -69,7 +50,6 @@ resources:
             created: .fields.created
             updated: .fields.updated
           relations:
-            board: .boardId
             sprint: .sprint.id
             project: .fields.project.key
             parentIssue: .fields.parent.key

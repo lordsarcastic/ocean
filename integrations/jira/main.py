@@ -11,7 +11,6 @@ from jira.client import JiraClient
 class ObjectKind(StrEnum):
     PROJECT = "project"
     ISSUE = "issue"
-    BOARD = "board"
     SPRINT = "sprint"
 
 
@@ -68,19 +67,6 @@ async def on_resync_issues(kind: str) -> ASYNC_GENERATOR_RESYNC_TYPE:
                 yield issues
 
 
-@ocean.on_resync(ObjectKind.BOARD)
-async def on_resync_boards(kind: str) -> ASYNC_GENERATOR_RESYNC_TYPE:
-    client = JiraClient(
-        ocean.integration_config["jira_host"],
-        ocean.integration_config["atlassian_user_email"],
-        ocean.integration_config["atlassian_user_token"],
-    )
-
-    async for boards in client.get_boards():
-        logger.info(f"Received board batch with {len(boards)} boards")
-        yield boards
-
-
 @ocean.on_resync(ObjectKind.SPRINT)
 async def on_resync_sprints(kind: str) -> ASYNC_GENERATOR_RESYNC_TYPE:
     client = JiraClient(
@@ -113,10 +99,6 @@ async def handle_webhook_request(data: dict[str, Any]) -> dict[str, Any]:
         logger.info(f'Received webhook event for issue: {data["issue"]["key"]}')
         issue = await client.get_single_issue(data["issue"]["key"])
         await ocean.register_raw(ObjectKind.ISSUE, [issue])
-    elif "board" in data:
-        logger.info(f'Received webhook event for board: {data["board"]["id"]}')
-        board = await client.get_single_board(data["board"]["id"])
-        await ocean.register_raw(ObjectKind.BOARD, [board])
     elif "sprint" in data:
         logger.info(f'Received webhook event for sprint: {data["sprint"]["id"]}')
         sprint = await client.get_single_sprint(data["sprint"]["id"])
