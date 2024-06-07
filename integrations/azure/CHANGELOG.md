@@ -1,3 +1,83 @@
+0.1.59 (2024-06-05)
+
+### Improvements
+
+- Bumped ocean version to ^0.5.27 (#1)
+
+
+0.1.58 (2024-06-03)
+
+### Bug Fixes
+
+- Bump terraform provider version to 0.0.25 (#1)
+- Change Service icon to Microservice (#2)
+
+
+0.1.57 (2024-06-03)
+
+### Improvements
+
+- Bumped ocean version to ^0.5.25 (#1)
+
+
+0.1.56 (2024-06-02)
+
+### Improvements
+
+- Bumped ocean version to ^0.5.24 (#1)
+
+
+0.1.55 (2024-05-30)
+
+### Improvements
+
+- Bumped ocean version to ^0.5.23 (#1)
+- Updated the base image used in the Dockerfile that is created during integration scaffolding from `python:3.11-slim-buster` to `python:3.11-slim-bookworm`
+
+
+0.1.54 (2024-05-29)
+
+### Improvements
+
+- Bumped ocean version to ^0.5.22 (#1)
+
+
+0.1.53 (2024-05-26)
+
+### Improvements
+
+- Bumped ocean version to ^0.5.21 (#1)
+
+
+0.1.52 (2024-05-26)
+
+### Improvements
+
+- Bumped ocean version to ^0.5.20 (#1)
+- Removed the config.yaml file due to unused overrides
+
+
+0.1.51 (2024-05-20)
+
+### Improvements
+
+- Change default mappings of resources to use actual resource kinds and map them to the new generic cloudResource kind (#1)
+
+
+0.1.50 (2024-05-16)
+
+### Improvements
+
+- Bumped ocean version to ^0.5.19 (#1)
+
+
+0.1.49 (2024-05-12)
+
+### Improvements
+
+- Bumped ocean version to ^0.5.18 (#1)
+
+
 0.1.48 (2024-05-01)
 
 ### Improvements

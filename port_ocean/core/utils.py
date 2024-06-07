@@ -1,9 +1,10 @@
-from typing import Iterable, Any, TypeVar
+import asyncio
+from typing import Iterable, Any, TypeVar, Callable, Awaitable
 
 from pydantic import parse_obj_as, ValidationError
 
-from port_ocean.core.handlers.entity_processor.base import EntityPortDiff
 from port_ocean.core.models import Entity
+from port_ocean.core.models import EntityPortDiff
 from port_ocean.core.ocean_types import RAW_RESULT
 from port_ocean.exceptions.core import RawObjectValidationException
 
@@ -28,38 +29,59 @@ def is_same_entity(first_entity: Entity, second_entity: Entity) -> bool:
     )
 
 
-def get_unique(array: list[Entity]) -> list[Entity]:
-    result: list[Entity] = []
-    for item in array:
-        if all(not is_same_entity(item, seen_item) for seen_item in result):
-            result.append(item)
-    return result
+Q = TypeVar("Q")
+
+
+async def gather_and_split_errors_from_results(
+    task: Iterable[Awaitable[Q]],
+    result_threshold_validation: Callable[[Q | Exception], bool] | None = None,
+) -> tuple[list[Q], list[Exception]]:
+    valid_items: list[Q] = []
+    errors: list[Exception] = []
+    results = await asyncio.gather(*task, return_exceptions=True)
+    for item in results:
+        # return_exceptions will also catch Python BaseException which also includes KeyboardInterrupt, SystemExit, GeneratorExit
+        # https://docs.python.org/3/library/asyncio-task.html#asyncio.gather
+        # These exceptions should be raised and not caught for the application to exit properly.
+        # https://stackoverflow.com/a/17802352
+        if isinstance(item, BaseException) and not isinstance(item, Exception):
+            raise item
+        elif isinstance(item, Exception):
+            errors.append(item)
+        elif not result_threshold_validation or result_threshold_validation(item):
+            valid_items.append(item)
+
+    return valid_items, errors
 
 
 def get_port_diff(
     before: Iterable[Entity],
     after: Iterable[Entity],
 ) -> EntityPortDiff:
-    return EntityPortDiff(
-        deleted=get_unique(
-            [
-                item
-                for item in before
-                if not any(is_same_entity(item, item_after) for item_after in after)
-            ],
-        ),
-        created=get_unique(
-            [
-                item
-                for item in after
-                if not any(is_same_entity(item, item_before) for item_before in before)
-            ],
-        ),
-        modified=get_unique(
-            [
-                item
-                for item in after
-                if any(is_same_entity(item, item_before) for item_before in before)
-            ],
-        ),
-    )
+    before_dict = {}
+    after_dict = {}
+    created = []
+    modified = []
+    deleted = []
+
+    # Create dictionaries for before and after lists
+    for entity in before:
+        key = (entity.identifier, entity.blueprint)
+        before_dict[key] = entity
+
+    for entity in after:
+        key = (entity.identifier, entity.blueprint)
+        after_dict[key] = entity
+
+    # Find created, modified, and deleted objects
+    for key, obj in after_dict.items():
+        if key not in before_dict:
+            created.append(obj)
+        else:
+            modified.append(obj)
+
+    for key, obj in before_dict.items():
+        if key not in after_dict:
+            deleted.append(obj)
+
+    return EntityPortDiff(created=created, modified=modified, deleted=deleted)
